@@ -1,0 +1,67 @@
+import math
+import tkinter as tk
+
+# ---- Link lengths ----
+L1 = 120
+L2 = 80
+L3 = 60
+
+# ---- Angles (degrees) ----
+# theta1: angle of link1 from x-axis
+# theta2: angle between link2 and link1
+# theta3: angle between link3 and link2
+theta1 = 30
+theta2 = 40
+theta3 = -20
+
+def forward_kinematics(t1, t2, t3):
+    # Convert to radians
+    a1 = math.radians(t1)
+    a2 = math.radians(t1 + t2)
+    a3 = math.radians(t1 + t2 + t3)
+
+    # Base at center
+ x0, y0 = 250, 250
+
+    x1 = x0 + L1 * math.cos(a1)
+    y1 = y0 + L1 * math.sin(a1)
+
+    x2 = x1 + L2 * math.cos(a2)
+    y2 = y1 + L2 * math.sin(a2)
+
+    x3 = x2 + L3 * math.cos(a3)
+    y3 = y2 + L3 * math.sin(a3)
+
+    return [(x0,y0),(x1,y1),(x2,y2),(x3,y3)]
+
+def draw_arm():
+    joints = forward_kinematics(theta1, theta2, theta3)
+
+    canvas.delete("all")
+
+    # Draw links
+    canvas.create_line(joints[0][0], joints[0][1],
+                       joints[1][0], joints[1][1], width=4)
+
+    canvas.create_line(joints[1][0], joints[1][1],
+                       joints[2][0], joints[2][1], width=4)
+
+    canvas.create_line(joints[2][0], joints[2][1],
+                       joints[3][0], joints[3][1], width=4)
+
+    # Draw joints as small circles
+    for (x, y) in joints:
+        canvas.create_oval(x-5, y-5, x+5, y+5, fill="red")
+
+    print("End Effector Position:", joints[3])
+
+# ---- Tkinter UI ----
+root = tk.Tk()
+root.title("Simple 3-Link Robotic Arm")
+
+canvas = tk.Canvas(root, width=500, height=500, bg="white")
+canvas.pack()
+
+draw_arm()
+
+root.mainloop()

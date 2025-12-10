@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>3-link Planar Arm — Interactive</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 12px; }
+        .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+        .control { display: flex; flex-direction: column; width: 220px; }
+        label { font-weight: bold; margin-bottom: 6px; }
+        input[type=range] { width: 100%; }
+        #plot { width: 700px; height: 700px; }
+        .row { display:flex; gap:8px; align-items:center; }
+        button { padding: 8px 12px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>3-link Planar Arm (Browser visualization)</h2>
+    <p>Interactive translation of your Python robotics script — sliders update link angles. Use <b>Export CSV</b> to download joint positions.</p>
+
+    <div class="controls">
+        <div class="control">
+            <label>Link lengths</label>
+            <div class="row"><input id="L1" type="number" value="2.0" step="0.1" min="0.01"><span>m</span></div>
+            <div class="row"><input id="L2" type="number" value="1.5" step="0.1" min="0.01"><span>m</span></div>
+            <div class="row"><input id="L3" type="number" value="1.0" step="0.1" min="0.01"><span>m</span></div>
+        </div>
+
+        <div class="control">
+            <label>Theta1 (deg) — link1 absolute</label>
+            <input id="th1_range" type="range" min="-180" max="180" value="30">
+            <div class="row"><input id="th1_number" type="number" value="30" step="1"></div>
+
+            <label>Theta2 (deg) — between link2 & link1</label>
+            <input id="th2_range" type="range" min="-180" max="180" value="30">
+            <div class="row"><input id="th2_number" type="number" value="30" step="1"></div>
+
+            <label>Theta3 (deg) — between link3 & link2</label>
+            <input id="th3_range" type="range" min="-180" max="180" value="-20">
+            <div class="row"><input id="th3_number" type="number" value="-20" step="1"></div>
+        </div>
+
+        <div class="control">
+            <label>Actions</label>
+            <button id="exportCsv">Export CSV</button>
+            <button id="resetBtn">Reset</button>
+            <div style="margin-top:8px"><b>Endpoint:</b> <span id="endpoint">(0.000, 0.000)</span></div>
+        </div>
+    </div>
+
+    <div id="plot"></div>
+
+    <script>
+        // Utility
+        function deg2rad(d){ return d * Math.PI / 180.0; }
+
+        function forwardKinematics(th1_deg, th2_deg, th3_deg, L1, L2, L3){
+            const a1 = deg2rad(th1_deg);
+            const a2 = a1 + deg2rad(th2_deg);
+            const a3 = a2 + deg2rad(th3_deg);
+            const x0 = 0.0, y0 = 0.0;
+            const x1 = x0 + L1 * Math.cos(a1);
+            const y1 = y0 + L1 * Math.sin(a1);
+            const x2 = x1 + L2 * Math.cos(a2);
+            const y2 = y1 + L2 * Math.sin(a2);
+            const x3 = x2 + L3 * Math.cos(a3);
+            const y3 = y2 + L3 * Math.sin(a3);
+            return [[x0,y0],[x1,y1],[x2,y2],[x3,y3]];
+        }
+
+        // Elements
+        const th1_range = document.getElementById('th1_range');
+        const th2_range = document.getElementById('th2_range');
+        const th3_range = document.getElementById('th3_range');
+        const th1_number = document.getElementById('th1_number');
+        const th2_number = document.getElementById('th2_number');
+        const th3_number = document.getElementById('th3_number');
+        const L1_input = document.getElementById('L1');
+        const L2_input = document.getElementById('L2');
+        const L3_input = document.getElementById('L3');
+        const endpointSpan = document.getElementById('endpoint');
+        const exportBtn = document.getElementById('exportCsv');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Sync range and number inputs
+        function sync(rangeEl, numEl){
+            rangeEl.addEventListener('input', ()=>{ numEl.value = rangeEl.value; updatePlot(); });
+            numEl.addEventListener('change', ()=>{ rangeEl.value = numEl.value; updatePlot(); });
+        }
+        sync(th1_range, th1_number);
+        sync(th2_range, th2_number);
+        sync(th3_range, th3_number);
+
+        function getParams(){
+            const L1 = parseFloat(L1_input.value) || 0.0;
+            const L2 = parseFloat(L2_input.value) || 0.0;
+            const L3 = parseFloat(L3_input.value) || 0.0;
+            const th1 = parseFloat(th1_number.value) || 0.0;
+            const th2 = parseFloat(th2_number.value) || 0.0;
+            const th3 = parseFloat(th3_number.value) || 0.0;
+            return {L1,L2,L3,th1,th2,th3};
+        }
+
+        // Initial plot
+        function updatePlot(){
+            const p = getParams();
+            const joints = forwardKinematics(p.th1,p.th2,p.th3,p.L1,p.L2,p.L3);
+            const xs = joints.map(j=>j[0]);
+            const ys = joints.map(j=>j[1]);
+            const R = p.L1 + p.L2 + p.L3 + 0.5;
+
+            const linkTrace = {
+                x: xs,
+                y: ys,
+                mode: 'lines+markers+text',
+                marker: {size:8},
+                line: {width:6, color:'#1f77b4'},
+                text: ['Base','Joint1','Joint2','EndEffector'],
+                textposition: 'top center'
+            };
+
+            // workspace circle
+            const circleTheta = [];
+            const circleX = [];
+            const circleY = [];
+            for(let a=0;a<=360;a+=4){
+                const rad = deg2rad(a);
+                circleX.push((p.L1+p.L2+p.L3)*Math.cos(rad));
+                circleY.push((p.L1+p.L2+p.L3)*Math.sin(rad));
+            }
+            const circleTrace = { x: circleX, y: circleY, mode:'lines', line:{dash:'dash', color:'#888'}, hoverinfo:'none'};
+
+            const data = [linkTrace, circleTrace];
+
+            const layout = {
+                xaxis: {range:[-R,R], zeroline:true, title:'X', scaleanchor:'y', scaleratio:1},
+                yaxis: {range:[-R,R], zeroline:true, title:'Y'},
+                width:700, height:700, title:'3-link planar arm (XY plane)'
+            };
+
+            Plotly.react('plot', data, layout, {displayModeBar:true});
+
+            const ee = joints[3];
+            endpointSpan.textContent = `(${ee[0].toFixed(3)}, ${ee[1].toFixed(3)})`;
+        }
+
+        // Export CSV
+        function exportCSV(){
+            const p = getParams();
+            const joints = forwardKinematics(p.th1,p.th2,p.th3,p.L1,p.L2,p.L3);
+            const headers = ['name','x','y'];
+            const rows = [ ['base', joints[0][0], joints[0][1]], ['joint1', joints[1][0], joints[1][1]], ['joint2', joints[2][0], joints[2][1]], ['end_effector', joints[3][0], joints[3][1]] ];
+            let csv = headers.join(',') + '\n';
+            rows.forEach(r=>{ csv += `${r[0]},${r[1].toFixed(6)},${r[2].toFixed(6)}\n`; });
+            const blob = new Blob([csv], {type:'text/csv'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'endpoint_positions.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        exportBtn.addEventListener('click', exportCSV);
+        resetBtn.addEventListener('click', ()=>{ th1_range.value=30; th2_range.value=30; th3_range.value=-20; th1_number.value=30; th2_number.value=30; th3_number.value=-20; L1_input.value=2.0; L2_input.value=1.5; L3_input.value=1.0; updatePlot(); });
+
+        // update plot when lengths change
+        L1_input.addEventListener('change', updatePlot);
+        L2_input.addEventListener('change', updatePlot);
+        L3_input.addEventListener('change', updatePlot);
+
+        // initial draw
+        updatePlot();
+    </script>
+</body>
+</html>
